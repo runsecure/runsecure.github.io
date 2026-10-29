@@ -1,21 +1,22 @@
 ---
-title: Cloud key wrappers
+title: Cloud and Vault key wrappers
 sidebar_label: Overview
 sidebar_position: 0
-description: Use AWS KMS, Azure Key Vault or Google Cloud KMS as HkdfGuard's key encryption key in place of a TPM or Secure Enclave, and choose between them.
+description: Use AWS KMS, Azure Key Vault, Google Cloud KMS or HashiCorp Vault transit as HkdfGuard's key encryption key in place of a TPM or Secure Enclave, and choose between them.
 ---
 
-# Cloud key wrappers
+# Cloud and Vault key wrappers
 
 A key wrapper holds the **key encryption key (KEK)** that wraps and unwraps your data encryption
-keys (DEKs). The native wrapper keeps the KEK in the machine's TPM, Secure Enclave or HSM. A cloud
-key wrapper keeps it in a cloud key management service instead:
+keys (DEKs). The native wrapper keeps the KEK in the machine's TPM, Secure Enclave or HSM. These
+wrappers keep it in a cloud key management service, or in HashiCorp Vault, instead:
 
 | Wrapper | .NET package | Page |
 |---|---|---|
 | `AwsKmsKeyWrapper` | `HkdfGuard.KeyWrapping.AwsKms` | [AWS KMS](awskms.md) |
 | `AzureKeyVaultKeyWrapper` | `HkdfGuard.KeyWrapping.AzureKeyVault` | [Azure Key Vault](azurekeyvault.md) |
 | `GoogleKmsKeyWrapper` | `HkdfGuard.KeyWrapping.GoogleKms` | [Google Cloud KMS](googlekms.md) |
+| `HashiCorpVaultTransitKeyWrapper` | `HkdfGuard.KeyWrapping.HashiCorpVault` | [HashiCorp Vault](hashicorpvault.md) |
 
 Each is an `IKeyWrapper`, so it goes wherever `NativeHkdfKeyWrapperV1` would:
 `KeyRingBuilder.WithKeyWrapper(wrapper)`, with ephemeral keys or key files. Nothing else in your
@@ -23,32 +24,34 @@ application changes, and nothing native needs installing.
 
 ## When to use one
 
-Use a cloud key wrapper when your application runs in a cloud, or anywhere it can reach one, and you
-want key access controlled by the cloud's identity system and recorded in its audit log, rather than
-tied to one machine's hardware. Containers and autoscaled hosts with no TPM are the usual case.
+Use one of these when your application runs in a cloud or already authenticates to Vault, and you
+want key access controlled by that service's identity system and recorded in its audit log, rather
+than tied to one machine's hardware. Containers and autoscaled hosts with no TPM are the usual case.
+Vault transit also suits on-premises and multi-cloud deployments with no cloud KMS.
 
-| | Native | Cloud |
+| | Native | Cloud or Vault |
 |---|---|---|
-| KEK | A P-256 key in the TPM, Secure Enclave or HSM | A key in AWS KMS, Azure Key Vault or Google Cloud KMS |
-| Identified by | A service name | A key ARN, key identifier or resource name |
-| Who may unwrap | Local accounts and groups the native library allows | Identities the cloud's IAM allows |
-| Each call | Local | A request over the network, in the cloud's audit log |
+| KEK | A P-256 key in the TPM, Secure Enclave or HSM | A key in AWS KMS, Azure Key Vault, Google Cloud KMS or a Vault transit engine |
+| Identified by | A service name | A key ARN, key identifier, resource name, or Vault address and key name |
+| Who may unwrap | Local accounts and groups the native library allows | Identities the cloud's IAM, or Vault's policies, allow |
+| Each call | Local | A request over the network, in the service's audit log |
 | Key files are made | On the host that uses them, with `hkdfguard wrap` | Anywhere the pipeline has credentials, with the wrapper itself |
 | Install | The native package | Nothing beyond the library package |
 
 Wrapped DEKs aren't interchangeable. A key file belongs to the wrapper that made it.
 
-## Comparing the three
+## Comparing them
 
-| | AWS KMS | Azure Key Vault | Google Cloud KMS |
-|---|---|---|---|
-| Keys | One symmetric key | An RSA key to wrap, an EC P-256 key to sign | One symmetric key |
-| Who can create a key file the app accepts | Principals allowed `kms:Encrypt` | Principals allowed `sign` on the EC key | Principals allowed `useToEncrypt` |
-| Context binding | Encryption context (AAD) | A context string bound into the signature | A context string bound as AAD, after a fixed HkdfGuard label |
-| New DEKs | Generated inside KMS; the plaintext never leaves it | Generated in the process, wrapped, then zeroed | Generated in the process, wrapped, then zeroed |
-| Key pinning | The key is pinned on every `Decrypt` | Key names are the wrapper's; a key file holds only versions | The key is pinned on every `Decrypt` |
-| Integrity in transit | TLS | TLS, plus the signature | TLS, plus CRC32C on every request and response |
-| Wrapped DEK size | About 184 bytes | 359 bytes (RSA 2048) or 487 bytes (RSA 3072) | Well under the 512-byte limit |
+| | AWS KMS | Azure Key Vault | Google Cloud KMS | HashiCorp Vault transit |
+|---|---|---|---|---|
+| Keys | One symmetric key | An RSA key to wrap, an EC P-256 key to sign | One symmetric key | One AEAD transit key (`aes256-gcm96`) |
+| Who can create a key file the app accepts | Principals allowed `kms:Encrypt` | Principals allowed `sign` on the EC key | Principals allowed `useToEncrypt` | Tokens allowed `update` on `transit/encrypt/{key}` |
+| Context binding | Encryption context (AAD) | A context string bound into the signature | A context string bound as AAD, after a fixed HkdfGuard label | A context string bound as `associated_data`, never silently dropped |
+| New DEKs | Generated inside KMS; the plaintext never leaves it | Generated in the process, wrapped, then zeroed | Generated in the process, wrapped, then zeroed | Without a context, generated inside Vault; with one, in the process, then zeroed |
+| Key pinning | The key is pinned on every `Decrypt` | Key names are the wrapper's; a key file holds only versions | The key is pinned on every `Decrypt` | The key is pinned by its path on every request |
+| Integrity in transit | TLS | TLS, plus the signature | TLS, plus CRC32C on every request and response | TLS (plain HTTP only on loopback); no redirects |
+| Credentials | AWS SDK default chain | An Azure `TokenCredential` | Application Default Credentials | A Vault token from an `IVaultTokenSource`, held in pinned memory |
+| Wrapped DEK size | About 184 bytes | 359 bytes (RSA 2048) or 487 bytes (RSA 3072) | Well under the 512-byte limit | About 89 bytes (`vault:v1:...`) |
 
 ## The rule that matters most: keep "create" away from the application
 
@@ -61,13 +64,15 @@ application would then encrypt new data under a key they know. So every wrapper 
 | AWS KMS | `kms:Encrypt`, `kms:GenerateDataKeyWithoutPlaintext` | `kms:Decrypt` |
 | Azure Key Vault | Wrap on the RSA key, **sign** on the EC key | Unwrap on the RSA key, verify on the EC key |
 | Google Cloud KMS | `roles/cloudkms.cryptoKeyEncrypter` | `roles/cloudkms.cryptoKeyDecrypter` |
+| HashiCorp Vault transit | `update` on `transit/encrypt/{key}` and `transit/datakey/wrapped/{key}` | `update` on `transit/decrypt/{key}` |
 
-Never give the application the pipeline's permissions. This is the cloud form of
+Never give the application the pipeline's permissions. In Vault, never grant `create` on transit
+paths either: with it, a mistyped key name makes a new key. This is the network form of
 [separation of duties](../separationofduties.md).
 
 ## Where key files can live
 
-Every cloud wrapper reads key files only from where no untrusted account could have written or
+Every one of these wrappers reads key files only from where no untrusted account could have written or
 replaced them, by the same rules the native library applies, checked in managed code
 (`HkdfGuard.SecureFile`):
 
@@ -137,7 +142,7 @@ protector's key with `WrapAsync` instead; see [AWS KMS](awskms.md#wrapping-a-pip
 ## Choosing a refresh interval
 
 Every key in a ring re-reveals itself once per `KeyRefreshInterval`, which is one unwrap call to the
-cloud. After three failed refreshes in a row (by default) the ring suspends encryption and
+service. After three failed refreshes in a row (by default) the ring suspends encryption and
 decryption until the service answers again. So the interval trades how quickly a revoked grant stops
 the process against the number of requests:
 
@@ -152,8 +157,8 @@ The failure count also sets how long an outage is ridden out; change it with
 
 ## Other languages
 
-Every language library has the same three wrappers, and each repository's `docs/how-to` folder has
-its own setup pages:
+Every language library has the AWS, Azure and Google wrappers, and each repository's `docs/how-to`
+folder has its own setup pages. The HashiCorp Vault transit wrapper is in .NET only, so far:
 
 | Language | AWS KMS | Azure Key Vault | Google Cloud KMS |
 |---|---|---|---|
@@ -163,4 +168,5 @@ its own setup pages:
 | Node.js | `@runsecure/hkdfguard-keywrapping-awskms` | `@runsecure/hkdfguard-keywrapping-azurekeyvault` | `@runsecure/hkdfguard-keywrapping-googlekms` |
 | Python | `hkdfguard-keywrapping-awskms` | `hkdfguard-keywrapping-azurekeyvault` | `hkdfguard-keywrapping-googlekms` |
 
-The cloud setup on these pages (keys, roles, credentials) is the same whichever language you use.
+The setup on these pages (keys, roles, policies, credentials) is the same whichever language you
+use.

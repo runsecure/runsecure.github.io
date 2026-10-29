@@ -28,7 +28,7 @@ The examples on these pages are C#. The Python library has the same four caches,
 A cache holds *your application's secrets*: connection strings, API keys, passwords. A
 [key wrapper](../keywrappers/index.md) holds the *key encryption key* that protects your data
 encryption keys. A cache needs a key ring to encrypt under, and that ring needs a key wrapper,
-native or cloud. The two are configured separately and can use different clouds.
+native, cloud or Vault transit. The two are configured separately and can use different services.
 :::
 
 ## How a cache works
