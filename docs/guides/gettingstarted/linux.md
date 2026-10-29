@@ -362,11 +362,18 @@ provider = "external-secret"
 
 [external_secret]
 dir = "/run/secrets/hkdfguard"
+require_pinned_keys = true                 # from the release after 0.9.0
+
+[external_secret.pinned_keys]
+"com.example.myapp" = "<64 hex chars>"     # the key's fingerprint
 ```
 
 Mount it read-only and owner-only: `defaultMode: 0400` for a Kubernetes Secret, `perms =
 "0400"` for Vault Agent. For containers, the project also publishes a `FROM scratch` overlay
 image, `ghcr.io/runsecure/hkdfguard-overlay`, holding only the library and the tool.
+
+[External secrets](../externalsecrets.md) covers creating the key with OpenSSL, delivering it, and
+checking its fingerprint.
 
 ## Retire a key
 

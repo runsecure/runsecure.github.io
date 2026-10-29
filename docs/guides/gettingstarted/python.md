@@ -306,6 +306,9 @@ On Windows, the strict form also closes threads started later: a thread pool, as
 executor, or a library's background thread. On macOS it fails for an unsigned `python`, so use the
 plain form there. Debuggers and `py-spy` stop working for the process.
 
+[Process hardening](../processhardening.md) explains what each platform does, and when to
+pass the flag.
+
 ## Troubleshooting
 
 Every native error message names the status and what it means.

@@ -378,6 +378,9 @@ closes the threads it starts later. The Spring Boot starter deliberately has no 
 this, since auto-configuration runs too late. Debuggers, `jcmd` and `jstack` stop working for the
 process.
 
+[Process hardening](../processhardening.md) explains what each platform does, and when to
+pass the flag.
+
 ## Troubleshooting
 
 Every native error message names the status and what it means.

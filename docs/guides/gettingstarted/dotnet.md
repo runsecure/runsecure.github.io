@@ -323,6 +323,9 @@ It throws if it fails; don't start without it. On Windows, use `RequireProtected
 .NET runtime starts threads before `Main`, and the strict form also closes the threads it starts
 later. Debuggers and `dotnet-dump` stop working for the process.
 
+[Process hardening](../processhardening.md) explains what each platform does, and when to
+pass the flag.
+
 ## Troubleshooting
 
 Every native error message includes the status code and what it means.

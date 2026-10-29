@@ -310,6 +310,9 @@ On Windows, the strict form also closes threads Node starts later, such as libuv
 On macOS it fails for an unsigned `node`, so use the plain form there. Debuggers and the inspector
 stop working for the process.
 
+[Process hardening](../processhardening.md) explains what each platform does, and when to
+pass the flag.
+
 ## Troubleshooting
 
 Every error is an `HkdfGuardError` with a stable `code`. A failed native call is a `StatusError`,

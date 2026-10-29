@@ -103,13 +103,20 @@ lockout. Only PKCS#11 keys can be retired.
 ### External secret
 
 The KEK is a P-256 private key that the platform delivers as a file, `dir/service`: a Kubernetes
-Secret, a Vault Agent sink, a systemd credential. It may be 32 raw big-endian scalar bytes, PKCS#8
-DER, or SEC1 DER. The library never creates or writes one. The file must be owned by root or the
-service's user, with no access for anyone else (or `root:group 0440`), and every folder above it
-must be equally locked down, except on a read-only mount.
+Secret, a Vault Agent sink, a systemd credential. It may be SEC1 or PKCS#8 DER (recommended, and
+generated with OpenSSL), or 32 raw big-endian scalar bytes. The library never creates or writes
+one. The file must be owned by root or the service's user, with no access for anyone else (or
+`root:group 0440`), and every folder above it must be equally locked down, except on a read-only
+mount.
+
+File permissions limit who could have written the key, but not whether it is the key you made.
+From the release after `0.9.0`, the policy can **pin** each service's key by its fingerprint,
+`SHA-256(0x04 || X || Y)`, the same value every payload carries. A mounted key whose fingerprint
+isn't pinned is refused, and with `require_pinned_keys` an unpinned service has no KEK at all.
 
 This is the one non-hardware provider for persistent keys. The key is protected by the file's
-permissions, and `Z` is computed in process memory.
+permissions and its pin, and `Z` is computed in process memory.
+[External secrets](../externalsecrets.md) shows how to create, fingerprint, pin and deliver one.
 
 ### Ephemeral
 

@@ -363,6 +363,9 @@ if err := nativev1.HardenProcess(); err != nil {
 the same user can debug or inject into this one. Use it for a Windows service. Debuggers stop
 working for the process.
 
+[Process hardening](../processhardening.md) explains what each platform does, and when to
+pass the flag.
+
 ## Troubleshooting
 
 Every error wraps a sentinel you can test with `errors.Is`. A failed native call is a
